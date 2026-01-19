@@ -43,9 +43,12 @@ static const char *TAG = "mqtt_example";
 esp_mqtt_client_handle_t client; 
 
 
+extern const uint8_t root_server_crt_start[] asm("_binary_server_crt_start");
+extern const uint8_t root_server_crt_end[]   asm("_binary_server_crt_end");
+
 // Settings from ThingsBoard Device Profile (Step 1)
-#define PROVISION_KEY     "ioq4fnriznh7d01297k5"  //LUIS: "mjcevunkll3fz3q6dhmb" RUBEN: "ioq4fnriznh7d01297k5"
-#define PROVISION_SECRET  "h5d1joc7aujnibkzdh93"  //LUIS: "coh9hpv4r8t0naj8un9g" RUBEN: "h5d1joc7aujnibkzdh93"
+#define PROVISION_KEY     "agkui5gl6b0lp5mzfkkc"  //LUIS: "mjcevunkll3fz3q6dhmb" RUBEN: "ioq4fnriznh7d01297k5"
+#define PROVISION_SECRET  "ecdwqctkitkzuyocn70k"  //LUIS: "coh9hpv4r8t0naj8un9g" RUBEN: "h5d1joc7aujnibkzdh93"
 #define DEVICE_NAME      "ESP32_LUIS_RUBEN"  // Or generate this dynamically from MAC address
 
 temperature_sensor_handle_t temp_sensor = NULL;
@@ -240,7 +243,16 @@ static void mqtt_app_start(void)
     }
 
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://demo.thingsboard.io",
+        .broker.address.uri = "mqtt://192.168.1.70:8883",
+                // 3. ATTACH THE CERTIFICATE
+        .broker.verification.certificate = (const char *)root_cert_pem_start,
+        
+        // 4. IMPORTANT FOR LOCAL IP:
+        // Certificates verify "Hostnames" (like google.com). 
+        // Since you are using a local IP, the validation will fail unless you skip CN check
+        // OR you added the IP as a Subject Alternative Name (SAN) in the certificate.
+        // For development, skipping the name check is easiest:
+        .broker.verification.skip_cert_common_name_check = true,
         // If provisioning, username is "provision". If normal, it is the Token.
         .credentials.username = is_provisioning_mode ? "provision" : access_token, 
     };
