@@ -32,12 +32,12 @@ services:
       MQTT_SSL_BIND_ADDRESS: "0.0.0.0"
       MQTT_SSL_BIND_PORT: "8883"
       MQTT_SSL_CREDENTIALS_TYPE: "PEM"
-      MQTT_SSL_PEM_CERT: "/etc/thingsboard/conf/server.crt"
-      MQTT_SSL_PEM_KEY: "/etc/thingsboard/conf/server.key"
+      MQTT_SSL_PEM_CERT: "/etc/thingsboard/conf/server.pem"
+      MQTT_SSL_PEM_KEY: "/etc/thingsboard/conf/server_key.pem"
     # AQUÍ es donde deben ir los certificados
     volumes:
-      - ./certs/server.crt:/etc/thingsboard/conf/server.crt:ro
-      - ./certs/server.key:/etc/thingsboard/conf/server.key:ro
+      - ./certs/server.pem:/etc/thingsboard/conf/server.pem:ro
+      - ./certs/server_key.pem:/etc/thingsboard/conf/server_key.pem:ro
     depends_on:
       - postgres
 
