@@ -26,6 +26,8 @@
 #include "driver/temperature_sensor.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_mac.h"
 #include "mqtt_client.h"
 
 #include "pb_decode.h"
@@ -50,6 +52,19 @@ extern const uint8_t root_server_key_pem_end[]   asm("_binary_server_key_pem_end
 #define PROVISION_KEY     "agkui5gl6b0lp5mzfkkc"  //LUIS: "mjcevunkll3fz3q6dhmb" RUBEN: "ioq4fnriznh7d01297k5"
 #define PROVISION_SECRET  "ecdwqctkitkzuyocn70k"  //LUIS: "coh9hpv4r8t0naj8un9g" RUBEN: "h5d1joc7aujnibkzdh93"
 #define DEVICE_NAME      "ESP32_LUIS_RUBEN3"  // Or generate this dynamically from MAC address
+char device_name[64];
+void generate_device_name() {
+    uint8_t mac[6];
+
+    // Obtener la MAC base del ESP32
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+
+    // Crear nombre único usando la MAC
+    snprintf(device_name, sizeof(device_name),
+             "ESP32_%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2],
+             mac[3], mac[4], mac[5]);
+}
 
 temperature_sensor_handle_t temp_sensor = NULL;
 
@@ -122,12 +137,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         if (is_provisioning_mode) {
             // 1. Subscribe to response
             esp_mqtt_client_subscribe(client, "/provision/response/+", 1);
-
             // 2. Prepare JSON Request
             char payload[256];
             snprintf(payload, sizeof(payload), 
                 "{\"deviceName\": \"%s\", \"provisionDeviceKey\": \"%s\", \"provisionDeviceSecret\": \"%s\"}",
-                DEVICE_NAME, PROVISION_KEY, PROVISION_SECRET);
+                device_name, PROVISION_KEY, PROVISION_SECRET);
 
             // 3. Send Request
             esp_mqtt_client_publish(client, "/provision/request", payload, 0, 0, 0);
@@ -426,6 +440,8 @@ void app_main(void)
      * examples/protocols/README.md for more information about this function.
      */
     ESP_ERROR_CHECK(example_connect());
+
+    generate_device_name();
     mqtt_app_start();
     init_temp_sensor(); // Inicializar el sensor interno
     xTaskCreate(&publisher, "Sensor", 4096, NULL, 0, &sensor_handle);
