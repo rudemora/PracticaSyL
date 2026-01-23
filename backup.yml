@@ -1,0 +1,57 @@
+services:
+  postgres:
+    restart: always
+    image: "postgres:16"
+    ports:
+      - "5432"
+    environment:
+      POSTGRES_DB: thingsboard
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  thingsboard-ce:
+    restart: always
+    image: "thingsboard/tb-node:4.2.1.1"
+    ports:
+      - "8080:8080"
+      - "7070:7070"
+#      - "1883:1883"
+      - "8883:8883"
+      - "5683-5688:5683-5688/udp"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    environment:
+      TB_SERVICE_ID: tb-ce-node
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
+      # --- CONFIGURACIÓN MQTT TLS ---
+      MQTT_SSL_ENABLED: "true"
+      MQTT_SSL_BIND_ADDRESS: "0.0.0.0"
+      MQTT_SSL_BIND_PORT: "8883"
+      MQTT_SSL_CREDENTIALS_TYPE: "PEM"
+      MQTT_SSL_PEM_CERT: "/etc/thingsboard/conf/server.pem"
+      MQTT_SSL_PEM_KEY: "/etc/thingsboard/conf/server_key.pem"
+
+      # --- CONFIGURACIÓN COAP DTLS ---      
+      COAP_DTLS_ENABLED: "true"
+      COAP_DTLS_BIND_ADDRESS: "0.0.0.0"
+      COAP_DTLS_BIND_PORT: "5684"
+      COAP_DTLS_CREDENTIALS_TYPE: "PEM"
+      COAP_DTLS_PEM_CERT: "/etc/thingsboard/conf/server.pem"
+      COAP_DTLS_PEM_KEY: "/etc/thingsboard/conf/server_key.pem"
+
+    # AQUÍ es donde deben ir los certificados
+    volumes:
+      - ./certs/server.pem:/etc/thingsboard/conf/server.pem:ro
+      - ./certs/server_key.pem:/etc/thingsboard/conf/server_key.pem:ro
+    depends_on:
+      - postgres
+
+# Esta sección es solo para definir almacenamiento gestionado por Docker
+volumes:
+  postgres-data:
+    name: tb-postgres-data
+    driver: local

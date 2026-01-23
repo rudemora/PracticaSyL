@@ -1,0 +1,11 @@
+menu "Coap Thigsboard Configuration"
+
+
+    config BROKER_IP
+        string "Broker URL"
+        default "192.168.1.119"
+        help
+            URL del broker al que se conecta
+
+
+endmenu

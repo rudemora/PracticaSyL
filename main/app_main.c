@@ -1,58 +1,45 @@
-/* MQTT (over TCP) Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include "esp_system.h"
-#include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "protocol_examples_common.h"
 #include <time.h>
 #include "cJSON.h"
-#include "nvs.h"
+
 
 #include "esp_wifi.h"
 
-#include "driver/temperature_sensor.h"
 
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_mac.h"
-#include "mqtt_client.h"
 
 #include "pb_decode.h"
 #include "attributes.pb.h"
-#include "pb_encode.h"
-#include "telemetry.pb.h"
 
-#define TOPIC "EDIFICIO_3/P_4/N/12"
-
-static bool sensor_active = true;
-TaskHandle_t sensor_handle = NULL;
-
-static const char *TAG = "mqtt_example";
-
-esp_mqtt_client_handle_t client; 
+#include "nvs_flash.h"
+#include "mqtt_tb.h"
+#include "collect_data.h"
+#include "coap_tb.h"
+#include "esp_timer.h"
 
 
-extern const uint8_t root_server_pem_start[] asm("_binary_server_pem_start");
-extern const uint8_t root_server_key_pem_end[]   asm("_binary_server_key_pem_end");
 
-// Settings from ThingsBoard Device Profile (Step 1)
-#define PROVISION_KEY     "agkui5gl6b0lp5mzfkkc"  //LUIS: "mjcevunkll3fz3q6dhmb" RUBEN: "ioq4fnriznh7d01297k5"
-#define PROVISION_SECRET  "ecdwqctkitkzuyocn70k"  //LUIS: "coh9hpv4r8t0naj8un9g" RUBEN: "h5d1joc7aujnibkzdh93"
-#define DEVICE_NAME      "ESP32_LUIS_RUBEN3"  // Or generate this dynamically from MAC address
+
+
+static const char *TAG = "app_main";
+
+
+static esp_timer_handle_t coap_timer;
+static TaskHandle_t xPublisherTask = NULL;
+
+
 char device_name[64];
+
 void generate_device_name() {
     uint8_t mac[6];
 
@@ -65,248 +52,6 @@ void generate_device_name() {
              mac[0], mac[1], mac[2],
              mac[3], mac[4], mac[5]);
 }
-
-temperature_sensor_handle_t temp_sensor = NULL;
-
-void init_temp_sensor() {
-    temperature_sensor_config_t temp_sensor_config = {
-    .range_min = 10,
-    .range_max = 50,
-    };
-    //ESP_ERROR_CHECK(temperature_sensor_install(&temp_sensor_config, &temp_sensor));
-    //ESP_ERROR_CHECK(temperature_sensor_enable(temp_sensor));
-}
-
-
-// Global to hold the final token
-char access_token[128] = {0};
-bool is_provisioning_mode = false;
-int intervalo_envio = 5000;
-
-void save_token_to_nvs(const char *token) {
-    nvs_handle_t my_handle;
-    ESP_ERROR_CHECK(nvs_open("storage", NVS_READWRITE, &my_handle));
-    ESP_ERROR_CHECK(nvs_set_str(my_handle, "tb_token", token));
-    ESP_ERROR_CHECK(nvs_commit(my_handle));
-    nvs_close(my_handle);
-}
-
-bool load_token_from_nvs() {
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
-    if (err != ESP_OK) return false;
-
-    size_t required_size;
-    err = nvs_get_str(my_handle, "tb_token", NULL, &required_size);
-    if (err == ESP_OK && required_size < sizeof(access_token)) {
-        nvs_get_str(my_handle, "tb_token", access_token, &required_size);
-        nvs_close(my_handle);
-        return true; 
-    }
-    nvs_close(my_handle);
-    return false;
-}
-
-static void log_error_if_nonzero(const char *message, int error_code)
-{
-    if (error_code != 0) {
-        ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
-    }
-}
-
-/*
- * @brief Event handler registered to receive MQTT events
- *
- *  This function is called by the MQTT client event loop.
- *
- * @param handler_args user data registered to the event.
- * @param base Event base for the handler(always MQTT Base in this example).
- * @param event_id The id for the received event.
- * @param event_data The data for the event, esp_mqtt_event_handle_t.
- */
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
-{
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
-    esp_mqtt_event_handle_t event = event_data;
-    client = event->client;
-    int msg_id;
-    switch ((esp_mqtt_event_id_t)event_id) {
-    case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT Connected");
-        
-        if (is_provisioning_mode) {
-            // 1. Subscribe to response
-            esp_mqtt_client_subscribe(client, "/provision/response/+", 1);
-            // 2. Prepare JSON Request
-            char payload[256];
-            snprintf(payload, sizeof(payload), 
-                "{\"deviceName\": \"%s\", \"provisionDeviceKey\": \"%s\", \"provisionDeviceSecret\": \"%s\"}",
-                device_name, PROVISION_KEY, PROVISION_SECRET);
-
-            // 3. Send Request
-            esp_mqtt_client_publish(client, "/provision/request", payload, 0, 0, 0);
-            ESP_LOGI(TAG, "Sent Provisioning Request...");
-        } else {
-                // 1. Subscribe to Attribute Updates (Live changes)
-            esp_mqtt_client_subscribe(client, "v1/devices/me/attributes", 1);
-
-            // 2. Subscribe to Attribute Request Responses (Initial read)
-            esp_mqtt_client_subscribe(client, "v1/devices/me/attributes/response/+", 1);
-
-            // 3. Request the current value of 'intervalo_envio'
-            // We use request ID '1'
-            const char *req_payload = "{\"sharedKeys\":\"intervalo_envio\"}"; 
-            esp_mqtt_client_publish(client, "v1/devices/me/attributes/request/1", req_payload, 0, 0, 0); 
-            
-            ESP_LOGI(TAG, "Subscribed to attributes and requested current value");
-        }
-        break;
-    case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-        break;
-
-    case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        //msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-        //ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-        break;
-    case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-        break;
-    case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-        break;
-    case MQTT_EVENT_DATA:
-         if (is_provisioning_mode) {
-            printf("Provision Response: %.*s\r\n", event->data_len, event->data);
-            
-            // Parse JSON to get credentialsValue
-            cJSON *root = cJSON_ParseWithLength(event->data, event->data_len);
-            cJSON *status = cJSON_GetObjectItem(root, "status");
-            
-            if (status && strcmp(status->valuestring, "SUCCESS") == 0) {
-                cJSON *tokenItem = cJSON_GetObjectItem(root, "credentialsValue");
-                if (tokenItem) {
-                    ESP_LOGI(TAG, "TOKEN RECEIVED: %s", tokenItem->valuestring);
-                    
-                    // Save to NVS
-                    save_token_to_nvs(tokenItem->valuestring);
-                    
-                    // RESTART to load new token and run normally
-                    ESP_LOGI(TAG, "Restarting in 2 seconds...");
-                    vTaskDelay(2000 / portTICK_PERIOD_MS);
-                    esp_restart();
-                }
-            }
-            cJSON_Delete(root);
-        }
-        else {
-        printf("Received Data: %.*s\r\n", event->data_len, event->data);
-        
-        // Parse JSON
-        cJSON *root = cJSON_ParseWithLength(event->data, event->data_len);
-        if (root == NULL) break;
-
-        // Check if the payload contains our attribute directly
-        // (This happens on live updates via 'v1/devices/me/attributes')
-        cJSON *intervalItem = cJSON_GetObjectItem(root, "intervalo_envio"); 
-        
-        // If not found directly, it might be inside a "shared" object
-        // (This happens on response to request 'v1/devices/me/attributes/response/+')
-        if (!intervalItem) { 
-            cJSON *shared = cJSON_GetObjectItem(root, "shared");
-            if (shared) {
-                intervalItem = cJSON_GetObjectItem(shared, "intervalo_envio");
-            }
-        }
-
-        // If we found the item and it is a number, update the variable
-        if (intervalItem && cJSON_IsNumber(intervalItem)) { 
-            intervalo_envio = intervalItem->valueint;
-            ESP_LOGI(TAG, "NEW INTERVAL SET: %d ms", intervalo_envio);
-        }
-
-        cJSON_Delete(root);
-    }
-        break;
-    case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-            log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
-            log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
-            log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
-            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
-
-        }
-        break;
-    default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
-        break;
-    }
-}
-
-static void mqtt_app_start(void)
-{
-    // Try to load token
-    if (load_token_from_nvs()) {
-        ESP_LOGI(TAG, "Token found in NVS: %s", access_token);
-        is_provisioning_mode = false;
-    } else {
-        ESP_LOGW(TAG, "No token found. Starting Provisioning Mode.");
-        is_provisioning_mode = true;
-    }
-
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtts://192.168.1.70:8883",
-                // 3. ATTACH THE CERTIFICATE
-        .broker.verification.certificate = (const char *)root_server_pem_start,
-        
-        // 4. IMPORTANT FOR LOCAL IP:
-        // Certificates verify "Hostnames" (like google.com). 
-        // Since you are using a local IP, the validation will fail unless you skip CN check
-        // OR you added the IP as a Subject Alternative Name (SAN) in the certificate.
-        // For development, skipping the name check is easiest:
-        .broker.verification.skip_cert_common_name_check = true,
-        // If provisioning, username is "provision". If normal, it is the Token.
-        .credentials.username = is_provisioning_mode ? "provision" : access_token, 
-    };
-
-    client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
-}
-
-float random_float(float min, float max) {
-    return ((float)rand() / RAND_MAX) * (max - min) + min;
-}
-
-void generar_datos(float *temp, float *hum, float *lux, float *vibr) {
-    *temp = random_float(15.0, 30.0);
-    *hum  = random_float(30.0, 80.0);
-    *lux  = random_float(100.0, 1000.0);
-    *vibr = random_float(0.0, 10.0);
-}
-
-void obtener_datos(int8_t *rssi, uint32_t *heap) {
-    wifi_ap_record_t ap_info;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        *rssi = ap_info.rssi;
-    } else {
-        *rssi = 0;
-    }
-    *heap = esp_get_free_heap_size();
-}
-
-float obtener_temperatura_mcu() {
-    return 17;
-    float tsens_out;
-    if (temp_sensor != NULL) {
-        ESP_ERROR_CHECK(temperature_sensor_get_celsius(temp_sensor, &tsens_out));
-        return tsens_out;
-    }
-    return 0.0;
-}
-
 
 /*void publisher(void *pvParameters) {
     int msg_id;
@@ -355,10 +100,8 @@ float obtener_temperatura_mcu() {
 }*/
 
 
-#include "pb_encode.h"
-#include "telemetry.pb.h"
 
-void publisher(void *pvParameters)
+/*void publisher(void *pvParameters)
 {
     uint8_t buffer[128]; // Buffer para Protobuf binario
 
@@ -415,6 +158,63 @@ void publisher(void *pvParameters)
 
         vTaskDelay(pdMS_TO_TICKS(intervalo_envio));
     }
+}*/
+
+// callback del timer
+static void sensor_timer_callback(void* arg)
+{
+    if (xPublisherTask != NULL) {
+        // Enviamos una notificación a la tarea para que despierte
+        xTaskNotifyGive(xPublisherTask);
+    }
+}
+
+void coap_process_task(void *pvParameters) {
+    while(1) {
+        coap_tb_process();
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+
+
+/*void publisher(void *pvParameters) { //COAP
+    float temp; uint32_t heap; int8_t rssi;
+    while (1) {
+        // La tarea se queda aquí bloqueada hasta que el timer avise
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        ESP_LOGI(TAG, "Publisher despertado");
+
+        // Obtener datos
+        obtener_datos(&temp, &heap, &rssi);
+
+        // Enviar datos
+        tb_coap_send_telemetry(temp, heap, rssi);
+     
+        ESP_LOGI(TAG, "Envío completado. Volviendo a dormir");
+    }
+
+}*/
+
+void publisher(void *pvParameters) { //MQTT
+    float temp; uint32_t heap; int8_t rssi;
+    while (1) {
+        // La tarea se queda aquí bloqueada hasta que el timer avise
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // obtener datos
+        obtener_datos(&temp, &heap, &rssi);
+
+        // enviar datos 
+        if (tb_mqtt_send_telemetry(temp, heap, rssi) == ESP_OK) { //CAMBIO
+            ESP_LOGI("APP", "Telemetria enviada correctamente");
+        } else {
+            ESP_LOGW("APP", "Ningun envío realizado (modo provisioning o desconectado)");
+        }
+
+
+        vTaskDelay(pdMS_TO_TICKS(get_intervalo_envio()));
+    }
 }
 
 void app_main(void)
@@ -423,26 +223,30 @@ void app_main(void)
     ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
     ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
 
-    esp_log_level_set("*", ESP_LOG_INFO);
-    esp_log_level_set("mqtt_client", ESP_LOG_VERBOSE);
-    esp_log_level_set("mqtt_example", ESP_LOG_VERBOSE);
-    esp_log_level_set("transport_base", ESP_LOG_VERBOSE);
-    esp_log_level_set("esp-tls", ESP_LOG_VERBOSE);
-    esp_log_level_set("transport", ESP_LOG_VERBOSE);
-    esp_log_level_set("outbox", ESP_LOG_VERBOSE);
 
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
     ESP_ERROR_CHECK(example_connect());
 
     generate_device_name();
-    mqtt_app_start();
     init_temp_sensor(); // Inicializar el sensor interno
-    xTaskCreate(&publisher, "Sensor", 4096, NULL, 0, &sensor_handle);
+    //xTaskCreate(&coap_process_task, "coap_process", 4096, NULL, 6, NULL); //mas prioridad
+    //coap_app_start(device_name);
+    mqtt_app_start(device_name);
+
+    const esp_timer_create_args_t coap_timer_args = {
+        .callback = &sensor_timer_callback,
+        .name = "periodic_timer"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&coap_timer_args, &coap_timer));
+
+
+    int64_t periodo_us = (int64_t)get_intervalo_envio() * 1000;
+    ESP_ERROR_CHECK(esp_timer_start_periodic(coap_timer, periodo_us));
+    xTaskCreate(publisher, "publisher", 4096, NULL, 5, &xPublisherTask);
+
+    ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio());
 }
