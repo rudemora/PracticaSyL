@@ -8,7 +8,7 @@
 #include <netdb.h>
 
 // Configuraciones del Kconfig
-#define BROKER_IP          CONFIG_BROKER_IP 
+#define SERVER_IP          CONFIG_SERVER_IP
 #define COAP_PORT          "5684"
 #define PROVISION_KEY      CONFIG_PROVISION_KEY_COAP 
 #define PROVISION_SECRET   CONFIG_PROVISION_SECRET_COAP
@@ -33,23 +33,18 @@ extern void actualizar_timer_intervalo(int nuevo_ms);
 
 
 
-/**
- * @brief Solicita el atributo 'intervalo_envio' al servidor
- * Endpoint: GET coap://host/api/v1/$TOKEN/attributes?sharedKeys=intervalo_envio
- */
-
-
+// Solicita el atributo 'intervalo_envio' al servidor
 void tb_coap_subscribe_attributes() {
     if (!coap_session || is_provisioning || get_token() == NULL) return;
 
     coap_pdu_t *pdu = coap_new_pdu(COAP_MESSAGE_CON, COAP_REQUEST_GET, coap_session);
     if (!pdu) return;
 
-    // 1. Añadir opción OBSERVE (valor 0 para iniciar observación)
+    // Añadir opción OBSERVE (valor 0 para iniciar observación)
     uint8_t obs_buf[3];
     coap_add_option(pdu, COAP_OPTION_OBSERVE, coap_encode_var_safe(obs_buf, sizeof(obs_buf), COAP_OBSERVE_ESTABLISH), obs_buf);
 
-    // 2. URI PATH para suscripción en ThingsBoard
+    // PATH para "suscripción" en ThingsBoard
     coap_add_option(pdu, COAP_OPTION_URI_PATH, 3, (const uint8_t *)"api");
     coap_add_option(pdu, COAP_OPTION_URI_PATH, 2, (const uint8_t *)"v1");
     coap_add_option(pdu, COAP_OPTION_URI_PATH, strlen(get_token()), (const uint8_t *)get_token());
@@ -60,9 +55,7 @@ void tb_coap_subscribe_attributes() {
     ESP_LOGI(TAG, "Suscrito a cambios de atributos (Observe) via CoAP...");
 }
 
-/**
- * @brief Manejador de respuestas del servidor (ACKs y Datos)
- */
+// Manejador de respuestas del servidor (ACKs y Datos)
 static coap_response_t message_handler(coap_session_t *session, const coap_pdu_t *sent, 
                                      const coap_pdu_t *received, const coap_mid_t id) {
     coap_pdu_code_t rcv_code = coap_pdu_get_code(received);
@@ -114,14 +107,12 @@ static coap_response_t message_handler(coap_session_t *session, const coap_pdu_t
     return COAP_RESPONSE_OK;
 }
 
-/**
- * @brief Configura la sesión DTLS con certificados
- */
+// Configura la sesión DTLS con certificados
 static coap_session_t* setup_dtls_session() {
     coap_address_t dst;
     coap_addr_info_t *info_list = NULL;
 
-    info_list = coap_resolve_address_info(coap_make_str_const(BROKER_IP), 0, atoi(COAP_PORT), 
+    info_list = coap_resolve_address_info(coap_make_str_const(SERVER_IP), 0, atoi(COAP_PORT), 
                                          0, 0, AF_INET, COAP_PROTO_DTLS, COAP_RESOLVE_TYPE_LOCAL);
     if (!info_list) return NULL;
     dst = info_list->addr;
@@ -146,9 +137,7 @@ static coap_session_t* setup_dtls_session() {
     return coap_new_client_session_pki(coap_ctx, NULL, &dst, COAP_PROTO_DTLS, &pki_info);
 }
 
-/**
- * @brief Solicita un Token a ThingsBoard vía CoAP
- */
+// Solicita un Token a ThingsBoard vía CoAP
 void tb_coap_provision() {
     is_provisioning = true;
     if (!coap_session) coap_session = setup_dtls_session();

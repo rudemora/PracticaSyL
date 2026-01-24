@@ -11,7 +11,7 @@
 #define PROVISION_SECRET  CONFIG_PROVISION_SECRET_MQTT 
 #define BROKER_URL        CONFIG_BROKER_URL
 
-extern const uint8_t root_server_mqtt_pem_start[] asm("_binary_server_mqtt_pem_start"); //CAMBIO
+extern const uint8_t root_server_mqtt_pem_start[] asm("_binary_server_mqtt_pem_start"); 
 
 extern void actualizar_timer_intervalo(int nuevo_ms);
 
@@ -112,16 +112,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         else {
             ESP_LOGI(TAG, "Recibidos datos: %.*s\r\n", event->data_len, event->data);
         
-            // Parse JSON
+            // Parsear JSON
             cJSON *root = cJSON_ParseWithLength(event->data, event->data_len);
             if (root == NULL) break;
 
-            // Check if the payload contains our attribute directly
-            // (This happens on live updates via 'v1/devices/me/attributes')
             cJSON *intervalItem = cJSON_GetObjectItem(root, "intervalo_envio"); 
             
-            // If not found directly, it might be inside a "shared" object
-            // (This happens on response to request 'v1/devices/me/attributes/response/+')
             if (!intervalItem) { 
                 cJSON *shared = cJSON_GetObjectItem(root, "shared");
                 if (shared) {
@@ -129,7 +125,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                 }
             }
 
-            // If we found the item and it is a number, update the variable
             if (intervalItem && cJSON_IsNumber(intervalItem)) { 
                 intervalo_envio = intervalItem->valueint;
                 ESP_LOGI(TAG, "NUEVO INTERVALO: %d ms", intervalo_envio);
@@ -172,16 +167,11 @@ void mqtt_app_start(char* device_name)
     }
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = BROKER_URL,
-                // 3. ATTACH THE CERTIFICATE
-        .broker.verification.certificate = (const char *)root_server_mqtt_pem_start, //CAMBIO
+                // certificado
+        .broker.verification.certificate = (const char *)root_server_mqtt_pem_start, 
         
-        // 4. IMPORTANT FOR LOCAL IP:
-        // Certificates verify "Hostnames" (like google.com). 
-        // Since you are using a local IP, the validation will fail unless you skip CN check
-        // OR you added the IP as a Subject Alternative Name (SAN) in the certificate.
-        // For development, skipping the name check is easiest:
+
         .broker.verification.skip_cert_common_name_check = true,
-        // If provisioning, username is "provision". If normal, it is the Token.
         .credentials.username = is_provisioning_mode ? "provision" : get_token(), 
         .network.timeout_ms = 10000,
     };
