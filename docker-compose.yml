@@ -31,20 +31,22 @@ services:
       MQTT_SSL_BIND_ADDRESS: "0.0.0.0"
       MQTT_SSL_BIND_PORT: "8883"
       MQTT_SSL_CREDENTIALS_TYPE: "PEM"
-      MQTT_SSL_PEM_CERT: "/etc/thingsboard/conf/server.pem"
-      MQTT_SSL_PEM_KEY: "/etc/thingsboard/conf/server_key.pem"
+      MQTT_SSL_PEM_CERT: "/etc/thingsboard/conf/server_mqtt.pem"
+      MQTT_SSL_PEM_KEY: "/etc/thingsboard/conf/server_key_mqtt.pem"
 
       # --- CONFIGURACIÓN COAP DTLS ---
       COAP_DTLS_ENABLED: "true"
       COAP_DTLS_BIND_ADDRESS: "0.0.0.0"
       COAP_DTLS_BIND_PORT: "5684"
       COAP_DTLS_CREDENTIALS_TYPE: "PEM"
-      COAP_DTLS_PEM_CERT: "/etc/thingsboard/conf/server.pem"
-      COAP_DTLS_PEM_KEY: "/etc/thingsboard/conf/server_key.pem"
+      COAP_DTLS_PEM_CERT: "/etc/thingsboard/conf/server_coap.pem"
+      COAP_DTLS_PEM_KEY: "/etc/thingsboard/conf/server_key_coap.pem"
 
     volumes:
-      - ./certs/server.pem:/etc/thingsboard/conf/server.pem:ro
-      - ./certs/server_key.pem:/etc/thingsboard/conf/server_key.pem:ro
+      - ./certs/server_mqtt.pem:/etc/thingsboard/conf/server_mqtt.pem:ro
+      - ./certs/server_key_mqtt.pem:/etc/thingsboard/conf/server_key_mqtt.pem:ro
+      - ./certs/server_coap.pem:/etc/thingsboard/conf/server_coap.pem:ro
+      - ./certs/server_key_coap:coap.pem:/etc/thingsboard/conf/server_key_coap.pem:ro
       - tb-data:/data # VOLUMEN NUEVO para datos de la aplicación
       - tb-logs:/var/log/thingsboard # OPCIONAL: Para ver logs fácilmente
     depends_on:
