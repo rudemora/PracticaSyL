@@ -18,8 +18,6 @@
 #include "esp_system.h"
 #include "esp_mac.h"
 
-#include "pb_decode.h"
-#include "attributes.pb.h"
 
 #include "nvs_flash.h"
 #include "mqtt_tb.h"
