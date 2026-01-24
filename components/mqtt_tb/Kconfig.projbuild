@@ -1,14 +1,14 @@
 menu "Mqtt Thigsboard Configuration"
 
-    config PROVISION_KEY
+    config PROVISION_KEY_MQTT
         string "Provision Key Thingsboard"
-        default  "zu1eo2u39gswqdy98jls"
+        default  "7q3oikap98fej6ogajve"
         help
             Provision key del perfil de dispositivo de Thingsboard
 
-    config PROVISION_SECRET
+    config PROVISION_SECRET_MQTT
         string "Provision Secret Thingsboard"
-        default "auij6l6olicsoo4w2p7q"
+        default "wv3nqps7o6udtjfytfiy"
         help
             Provision secret del perfil de dispositivo de Thingsboard
 

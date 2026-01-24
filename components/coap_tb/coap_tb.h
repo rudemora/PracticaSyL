@@ -5,7 +5,7 @@
 #include "esp_err.h"
 
 // Getters para el main
-int get_intervalo_envio();
+int get_intervalo_envio_coap();
 
 // Inicialización y envío
 void coap_app_start(char* device_name);

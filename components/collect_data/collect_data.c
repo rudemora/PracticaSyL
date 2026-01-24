@@ -9,12 +9,15 @@ temperature_sensor_handle_t temp_sensor = NULL;
 
 
 void init_temp_sensor() {
+    /* Las funciones install y enable estan soportadas para otras placas pero da undefined reference con la ESP32, dejamos la función aun así para 
+       mantener formato habitual de inicialización de componente
     temperature_sensor_config_t temp_sensor_config = {
     .range_min = 10,
     .range_max = 50,
     };
-    //ESP_ERROR_CHECK(temperature_sensor_install(&temp_sensor_config, &temp_sensor));
-    //ESP_ERROR_CHECK(temperature_sensor_enable(temp_sensor));
+    ESP_ERROR_CHECK(temperature_sensor_install(&temp_sensor_config, &temp_sensor)); //instalar driver temperatura
+    ESP_ERROR_CHECK(temperature_sensor_enable(temp_sensor)); //habilitar sensor
+    */
 }
 
 

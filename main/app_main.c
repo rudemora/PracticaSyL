@@ -53,112 +53,6 @@ void generate_device_name() {
              mac[3], mac[4], mac[5]);
 }
 
-/*void publisher(void *pvParameters) {
-    int msg_id;
-    
-    srand(time(NULL));
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-
-    // ThingsBoard requires this specific topic for telemetry
-    const char *tb_topic = "v1/devices/me/telemetry";
-    //wifi_ap_record_t *ap;
-    while (1) {
-        if (!is_provisioning_mode && client != NULL) {
-            int8_t rssi;
-            uint32_t heap;
-            obtener_datos(&rssi, &heap);
-
-            float mcu_temp = obtener_temperatura_mcu();
-
-            char payload[256]; 
-            snprintf(payload, sizeof(payload), 
-                     "{\"mcu_temp\": %.2f, \"free_heap\": %" PRIu32 ", \"rssi\": %d}", 
-                     mcu_temp, heap, rssi);
-            //
-            float temp, hum, lux, vibr;
-            generar_datos(&temp, &hum, &lux, &vibr);
-            //ap = esp_wifi_sta_get_ap_info(ap);
-            // Create a JSON string. 
-            // Example output: {"temperature": 23.5, "humidity": 50.2, "lux": 500.0, "vibration": 1.2}
-            char payload[128]; 
-            snprintf(payload, sizeof(payload), 
-                     "{\"temperature\": %.2f, \"humidity\": %.2f, \"lux\": %.2f, \"vibration\": %.2f}", 
-                     temp, hum, lux, vibr);
-            //
-            // Publish to ThingsBoard
-            // QoS 0 or 1 is fine. Retain should usually be 0 for telemetry.
-            msg_id = esp_mqtt_client_publish(client, tb_topic, payload, 0, 1, 0);
-            
-            ESP_LOGI(TAG, "Sent JSON to ThingsBoard: %s", payload);
-        } else {
-            ESP_LOGI(TAG, "Sensor disabled, skipping publish");
-        }
-        
-        vTaskDelay(intervalo_envio / portTICK_PERIOD_MS);
-    }
-    vTaskDelete(NULL);
-}*/
-
-
-
-/*void publisher(void *pvParameters)
-{
-    uint8_t buffer[128]; // Buffer para Protobuf binario
-
-    while (1) {
-        if (!is_provisioning_mode && client != NULL) {
-
-            // 1. Obtener datos
-            float mcu_temp = obtener_temperatura_mcu();
-            uint32_t heap = esp_get_free_heap_size();
-
-            int8_t rssi = 0;
-            wifi_ap_record_t ap_info;
-            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-                rssi = ap_info.rssi;
-            }
-
-            // 2. Crear mensaje Protobuf (nanopb)
-            telemetry_SensorDataReading message =
-                telemetry_SensorDataReading_init_default;
-
-            message.mcu_temp = (double)mcu_temp;
-            message.rssi = (int32_t)rssi;
-            message.free_heap = heap;
-
-            // 3. Codificar a binario
-            pb_ostream_t stream =
-                pb_ostream_from_buffer(buffer, sizeof(buffer));
-
-            if (!pb_encode(&stream,
-                            telemetry_SensorDataReading_fields,
-                            &message)) {
-                ESP_LOGE(TAG, "Error al codificar Protobuf: %s",
-                         PB_GET_ERROR(&stream));
-                vTaskDelay(pdMS_TO_TICKS(intervalo_envio));
-                continue;
-            }
-
-            size_t len = stream.bytes_written;
-
-            // 4. PUBLICAR en el topic CORRECTO de ThingsBoard
-            esp_mqtt_client_publish(
-                client,
-                "v1/devices/me/telemetry", // 
-                (const char *)buffer,
-                len,   // 
-                1,     // QoS recomendado
-                0
-            );
-
-            ESP_LOGI(TAG,
-                     "Enviado Protobuf (%d bytes). Temp: %.2f",
-                     (int)len, mcu_temp);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(intervalo_envio));
-    }
-}*/
 
 // callback del timer
 static void sensor_timer_callback(void* arg)
@@ -176,44 +70,30 @@ void coap_process_task(void *pvParameters) {
     }
 }
 
-
-
-/*void publisher(void *pvParameters) { //COAP
+void publisher(void *pvParameters) {
     float temp; uint32_t heap; int8_t rssi;
     while (1) {
-        // La tarea se queda aquí bloqueada hasta que el timer avise
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // Espera al timer
 
-        ESP_LOGI(TAG, "Publisher despertado");
-
-        // Obtener datos
         obtener_datos(&temp, &heap, &rssi);
 
-        // Enviar datos
-        tb_coap_send_telemetry(temp, heap, rssi);
-     
-        ESP_LOGI(TAG, "Envío completado. Volviendo a dormir");
+        // Envío por COAP
+        //tb_coap_send_telemetry(temp, heap, rssi);
+
+        // Envío por MQTT
+        tb_mqtt_send_telemetry(temp, heap, rssi);
+        ESP_LOGI(TAG, "ENVIO");
     }
-
-}*/
-
-void publisher(void *pvParameters) { //MQTT
-    float temp; uint32_t heap; int8_t rssi;
-    while (1) {
-        // La tarea se queda aquí bloqueada hasta que el timer avise
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        // obtener datos
-        obtener_datos(&temp, &heap, &rssi);
-
-        // enviar datos 
-        if (tb_mqtt_send_telemetry(temp, heap, rssi) == ESP_OK) { //CAMBIO
-            ESP_LOGI("APP", "Telemetria enviada correctamente");
-        } else {
-            ESP_LOGW("APP", "Ningun envío realizado (modo provisioning o desconectado)");
-        }
+}
 
 
-        vTaskDelay(pdMS_TO_TICKS(get_intervalo_envio()));
+// Reiniciar el timer con el nuevo tiempo de MQTT
+void actualizar_timer_intervalo(int nuevo_ms) {
+    if (coap_timer != NULL) {
+        esp_timer_stop(coap_timer);
+        int64_t periodo_us = (int64_t)nuevo_ms * 1000;
+        esp_timer_start_periodic(coap_timer, periodo_us);
+        ESP_LOGI("APP_MAIN", "Timer actualizado a %d ms por orden de MQTT", nuevo_ms);
     }
 }
 
@@ -232,8 +112,13 @@ void app_main(void)
 
     generate_device_name();
     init_temp_sensor(); // Inicializar el sensor interno
+
+
+    //Iniciar COAP
     //xTaskCreate(&coap_process_task, "coap_process", 4096, NULL, 6, NULL); //mas prioridad
     //coap_app_start(device_name);
+    
+    //Iniciar MQTT
     mqtt_app_start(device_name);
 
     const esp_timer_create_args_t coap_timer_args = {
@@ -244,9 +129,14 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_timer_create(&coap_timer_args, &coap_timer));
 
 
-    int64_t periodo_us = (int64_t)get_intervalo_envio() * 1000;
+    int64_t periodo_us = (int64_t)get_intervalo_envio_mqtt() * 1000;
+    //int64_t periodo_us = (int64_t)get_intervalo_envio_coap() * 1000;
+
     ESP_ERROR_CHECK(esp_timer_start_periodic(coap_timer, periodo_us));
+    
     xTaskCreate(publisher, "publisher", 4096, NULL, 5, &xPublisherTask);
 
-    ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio());
+    ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio_mqtt());
+    //ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio_coap());
+
 }

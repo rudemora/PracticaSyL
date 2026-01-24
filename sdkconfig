@@ -439,14 +439,16 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # Coap Thigsboard Configuration
 #
+CONFIG_PROVISION_KEY_COAP="zu1eo2u39gswqdy98jls"
+CONFIG_PROVISION_SECRET_COAP="auij6l6olicsoo4w2p7q"
 CONFIG_BROKER_IP="192.168.1.119"
 # end of Coap Thigsboard Configuration
 
 #
 # Mqtt Thigsboard Configuration
 #
-CONFIG_PROVISION_KEY="zu1eo2u39gswqdy98jls"
-CONFIG_PROVISION_SECRET="auij6l6olicsoo4w2p7q"
+CONFIG_PROVISION_KEY_MQTT="7q3oikap98fej6ogajve"
+CONFIG_PROVISION_SECRET_MQTT="wv3nqps7o6udtjfytfiy"
 CONFIG_BROKER_URL="mqtts://192.168.1.119:8883"
 # end of Mqtt Thigsboard Configuration
 

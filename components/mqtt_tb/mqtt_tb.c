@@ -6,18 +6,22 @@
 #include "telemetry.pb.h"
 #include "pb_encode.h"
 
-#define PROVISION_KEY     CONFIG_PROVISION_KEY 
-#define PROVISION_SECRET  CONFIG_PROVISION_SECRET  
+
+#define PROVISION_KEY     CONFIG_PROVISION_KEY_MQTT   
+#define PROVISION_SECRET  CONFIG_PROVISION_SECRET_MQTT 
 #define BROKER_URL        CONFIG_BROKER_URL
 
-extern const uint8_t root_server_pem_start[] asm("_binary_server_pem_start"); //CAMBIO
+extern const uint8_t root_server_mqtt_pem_start[] asm("_binary_server_mqtt_pem_start"); //CAMBIO
+
+extern void actualizar_timer_intervalo(int nuevo_ms);
 
 static const char *TAG = "mqtt_tb";
 static int intervalo_envio = 5000;
 
-/*int get_intervalo_envio(){ CAMBIO
+int get_intervalo_envio_mqtt(){
     return intervalo_envio;
-}*/
+}
+
 
 static char g_device_name[64];
 bool is_provisioning_mode = false;
@@ -59,12 +63,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
             // Subscribirnos al topic de respuesta de actualizaciones de atributos (lectura inicial)
             esp_mqtt_client_subscribe(client, "v1/devices/me/attributes/response/+", 1);
-
-            // Solicitar valor actual del atributo compartido 'intervalo envio'
-            const char *req_payload = "{\"sharedKeys\":\"intervalo_envio\"}"; 
-            esp_mqtt_client_publish(client, "v1/devices/me/attributes/request/1", req_payload, 0, 0, 0); 
             
-            ESP_LOGI(TAG, "Subscrito a los atributos y solicitado valor actual de intervalo_envio");
+            const char *request_payload = "{\"sharedKeys\":\"intervalo_envio\"}";
+            esp_mqtt_client_publish(client, "v1/devices/me/attributes/request/1", request_payload, 0, 1, 0);
+                    
+            ESP_LOGI(TAG, "Petición de atributos enviada...");
+
+            ESP_LOGI(TAG, "Subscrito a los atributos");
         }
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -127,7 +132,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             // If we found the item and it is a number, update the variable
             if (intervalItem && cJSON_IsNumber(intervalItem)) { 
                 intervalo_envio = intervalItem->valueint;
-                ESP_LOGI(TAG, "NEW INTERVAL SET: %d ms", intervalo_envio);
+                ESP_LOGI(TAG, "NUEVO INTERVALO: %d ms", intervalo_envio);
+                actualizar_timer_intervalo(intervalo_envio);
             }
 
             cJSON_Delete(root);
@@ -164,12 +170,10 @@ void mqtt_app_start(char* device_name)
         g_device_name[sizeof(g_device_name) - 1] = '\0';
         is_provisioning_mode = true;
     }
-    ESP_LOGI(TAG, "nombre %s %d", g_device_name, sizeof(device_name));
-
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = BROKER_URL,
                 // 3. ATTACH THE CERTIFICATE
-        .broker.verification.certificate = (const char *)root_server_pem_start, //CAMBIO
+        .broker.verification.certificate = (const char *)root_server_mqtt_pem_start, //CAMBIO
         
         // 4. IMPORTANT FOR LOCAL IP:
         // Certificates verify "Hostnames" (like google.com). 

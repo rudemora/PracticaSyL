@@ -3,11 +3,9 @@ services:
     restart: always
     image: "postgres:16"
     ports:
-      - "5432:5432" # Mapeo explícito
+      - "5432"
     environment:
       POSTGRES_DB: thingsboard
-      POSTGRES_USER: postgres # Recomendado definirlo explícitamente
-      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
 

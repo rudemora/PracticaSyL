@@ -1,11 +1,24 @@
 menu "Coap Thigsboard Configuration"
 
 
+    config PROVISION_KEY_COAP
+        string "Provision Key Thingsboard"
+        default  "zu1eo2u39gswqdy98jls"
+        help
+            Provision key del perfil de dispositivo de Thingsboard
+
+    config PROVISION_SECRET_COAP
+        string "Provision Secret Thingsboard"
+        default "auij6l6olicsoo4w2p7q"
+        help
+            Provision secret del perfil de dispositivo de Thingsboard
+
     config BROKER_IP
         string "Broker URL"
         default "192.168.1.119"
         help
             URL del broker al que se conecta
+
 
 
 endmenu

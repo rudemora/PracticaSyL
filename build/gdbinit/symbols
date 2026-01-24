@@ -1,0 +1,9 @@
+
+
+# Load bootloader symbols
+set confirm off
+    add-symbol-file /home/rudemora/practica_final_rpi_ii/RPI2FInal/build/bootloader/bootloader.elf
+set confirm on
+
+# Load application symbols
+file /home/rudemora/practica_final_rpi_ii/RPI2FInal/build/mqtt.elf
