@@ -32,7 +32,7 @@
 static const char *TAG = "app_main";
 
 
-static esp_timer_handle_t coap_timer;
+static esp_timer_handle_t timer;
 static TaskHandle_t xPublisherTask = NULL;
 
 
@@ -61,12 +61,16 @@ static void sensor_timer_callback(void* arg)
     }
 }
 
+
+#ifdef CONFIG_USE_COAP
 void coap_process_task(void *pvParameters) {
     while(1) {
         coap_tb_process();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+#endif
+
 
 void publisher(void *pvParameters) {
     float temp; uint32_t heap; int8_t rssi;
@@ -75,23 +79,25 @@ void publisher(void *pvParameters) {
 
         obtener_datos(&temp, &heap, &rssi);
 
-        // Envío por COAP
-        //tb_coap_send_telemetry(temp, heap, rssi);
-
-        // Envío por MQTT
-        tb_mqtt_send_telemetry(temp, heap, rssi);
-        ESP_LOGI(TAG, "ENVIO");
+        #ifdef CONFIG_USE_MQTT
+            ESP_LOGI(TAG, "--- Enviando telemetría vía MQTT ---");
+            tb_mqtt_send_telemetry(temp, heap, rssi);
+        #elif defined(CONFIG_USE_COAP)
+            ESP_LOGI(TAG, "--- Enviando telemetría vía COAP ---");
+            tb_coap_send_telemetry(temp, heap, rssi);
+        #endif
+        
     }
 }
 
 
-// Reiniciar el timer con el nuevo tiempo de MQTT
+// Reiniciar el timer con el nuevo tiempo
 void actualizar_timer_intervalo(int nuevo_ms) {
-    if (coap_timer != NULL) {
-        esp_timer_stop(coap_timer);
+    if (timer != NULL) {
+        esp_timer_stop(timer);
         int64_t periodo_us = (int64_t)nuevo_ms * 1000;
-        esp_timer_start_periodic(coap_timer, periodo_us);
-        ESP_LOGI("APP_MAIN", "Timer actualizado a %d ms por orden de MQTT", nuevo_ms);
+        esp_timer_start_periodic(timer, periodo_us);
+        ESP_LOGI("APP_MAIN", "Timer actualizado a %d ms", nuevo_ms);
     }
 }
 
@@ -112,29 +118,36 @@ void app_main(void)
     init_temp_sensor(); // Inicializar el sensor interno
 
 
-    //Iniciar COAP
-    //xTaskCreate(&coap_process_task, "coap_process", 4096, NULL, 6, NULL); //mas prioridad
-    //coap_app_start(device_name);
-    
-    //Iniciar MQTT
-    mqtt_app_start(device_name);
 
-    const esp_timer_create_args_t coap_timer_args = {
+    #ifdef CONFIG_USE_MQTT
+        mqtt_app_start(device_name);
+    #elif defined(CONFIG_USE_COAP)
+        xTaskCreate(&coap_process_task, "coap_process", 4096, NULL, 6, NULL); //mas prioridad
+        coap_app_start(device_name);
+    #endif
+
+    
+    const esp_timer_create_args_t timer_args = {
         .callback = &sensor_timer_callback,
         .name = "periodic_timer"
     };
 
-    ESP_ERROR_CHECK(esp_timer_create(&coap_timer_args, &coap_timer));
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer));
 
+    #ifdef CONFIG_USE_MQTT
+        int64_t periodo_us = (int64_t)get_intervalo_envio_mqtt() * 1000;
+    #elif defined(CONFIG_USE_COAP)
+        int64_t periodo_us = (int64_t)get_intervalo_envio_coap() * 1000;
+    #endif
 
-    int64_t periodo_us = (int64_t)get_intervalo_envio_mqtt() * 1000;
-    //int64_t periodo_us = (int64_t)get_intervalo_envio_coap() * 1000;
-
-    ESP_ERROR_CHECK(esp_timer_start_periodic(coap_timer, periodo_us));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, periodo_us));
     
     xTaskCreate(publisher, "publisher", 4096, NULL, 5, &xPublisherTask);
 
-    ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio_mqtt());
-    //ESP_LOGI(TAG, "Sistema listo. Timer configurado cada %d ms", get_intervalo_envio_coap());
+    #ifdef CONFIG_USE_MQTT
+        ESP_LOGI(TAG, "Sistema MQTT listo. Timer configurado cada %d ms", get_intervalo_envio_mqtt());
+    #elif defined(CONFIG_USE_COAP)
+        ESP_LOGI(TAG, "Sistema COAP listo. Timer configurado cada %d ms", get_intervalo_envio_coap());
+    #endif
 
 }

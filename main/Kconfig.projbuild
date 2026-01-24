@@ -1,5 +1,21 @@
 menu "Main Configuration"
 
+choice IoT_PROTOCOL
+        prompt "Seleccionar Protocolo de Transporte"
+        default USE_MQTT
+        help
+            Selecciona qué protocolo se utilizará para la comunicación con ThingsBoard.
 
+        config USE_MQTT
+            bool "Usar MQTT (sobre TLS)"
+            help
+                Habilita el cliente MQTT. Requiere broker y certificados.
+
+        config USE_COAP
+            bool "Usar CoAP (sobre DTLS)"
+            help
+                Habilita el cliente CoAP. Requiere servidor y certificados.
+
+    endchoice
 
 endmenu

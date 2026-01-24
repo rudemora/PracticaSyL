@@ -435,6 +435,9 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # Main Configuration
 #
+CONFIG_USE_MQTT=y
+# CONFIG_USE_COAP is not set
+# end of Main Configuration
 
 #
 # Coap Thigsboard Configuration
