@@ -23,5 +23,5 @@ direct_dependencies:
 - espressif/coap
 - protocol_examples_common
 manifest_hash: 60898081ea5a59e692f0f167fb71556311b720ebdc51ddfd013395000ad57de5
-target: esp32
+target: esp32s3
 version: 2.0.0

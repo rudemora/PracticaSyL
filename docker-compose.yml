@@ -17,10 +17,13 @@ services:
       - "8080:8080"
       - "7070:7070"
       - "8883:8883"
+      - "0.0.0.0:1883:1883"
       - "5684:5684/udp"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
       TB_SERVICE_ID: tb-ce-node
+
+      MQTT_BIND_ADDRESS: "0.0.0.0"
 
       # --- CONFIGURACIÓN MQTT TLS ---
       MQTT_SSL_ENABLED: "true"
